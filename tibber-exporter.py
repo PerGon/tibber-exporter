@@ -46,7 +46,7 @@ class TibberHomeRT(object):
         self.subscription_start = None
 
     def handle_live_measurement(self, data):
-        logging.info('Got live measurement update for homeId {homeid}'.format(homeid=self.id))
+        logging.debug('Got live measurement update for homeId {homeid}'.format(homeid=self.id))
         try:
             self.last_live_measurement = data['data']['liveMeasurement'].copy()
             self.last_live_measurement_update = datetime.now()
@@ -142,7 +142,7 @@ class TibberHome(object):
         self.last_price = None
         self.last_price_update = None
         self.subscription_rt = None
-        
+
         headers = { 'Authorization': 'Bearer ' + self.token }
         self.query_client = GraphqlClient(endpoint=QUERY_ENDPOINT, headers=headers, timeout=3.0)
 
@@ -178,7 +178,7 @@ class TibberHome(object):
         if self.last_price_update is None or\
             datetime.now() - self.last_price_update > timedelta(seconds=PRICE_CACHE_REFRESH_SECONDS):
             self.last_price_update = datetime.now()
-            logging.info('Fetching current priceinfo for homeId {homeid}'.format(homeid=self.id))
+            logging.debug('Fetching current priceinfo for homeId {homeid}'.format(homeid=self.id))
             data = self.query_client.execute(query="""
             {{
                 viewer {{
@@ -279,17 +279,21 @@ class TibberCollector(object):
             metrics['power_factor'].add_metric(labels, float(data['powerFactor']))
             metrics['power_reactive'].add_metric(labels, float(data['powerReactive']))
 
-        metrics['current'].add_metric([home.id, home.get_name(), '1'], float(data['currentL1']))
-        metrics['current'].add_metric([home.id, home.get_name(), '2'], float(data['currentL2']))
-        metrics['current'].add_metric([home.id, home.get_name(), '3'], float(data['currentL3']))
-        metrics['potential'].add_metric([home.id, home.get_name(), '1'], float(data['voltagePhase1']))
-        metrics['potential'].add_metric([home.id, home.get_name(), '2'], float(data['voltagePhase2']))
-        metrics['potential'].add_metric([home.id, home.get_name(), '3'], float(data['voltagePhase3']))
+        if data.get('currentL1') is not None:
+            metrics['current'].add_metric([home.id, home.get_name(), '1'], float(data['currentL1']))
+            metrics['potential'].add_metric([home.id, home.get_name(), '1'], float(data['voltagePhase1']))
+        if data.get('currentL2') is not None:
+            metrics['current'].add_metric([home.id, home.get_name(), '2'], float(data['currentL2']))
+            metrics['potential'].add_metric([home.id, home.get_name(), '2'], float(data['voltagePhase2']))
+        if data.get('currentL3') is not None:
+            metrics['current'].add_metric([home.id, home.get_name(), '3'], float(data['currentL3']))
+            metrics['potential'].add_metric([home.id, home.get_name(), '3'], float(data['voltagePhase3']))
+
         if data['signalStrength'] is not None:
             metrics['signal_strength'].add_metric(labels, float(data['signalStrength']))
 
     def collect(self):
-        logging.info('Collect')
+        logging.debug('Collect')
 
         if not self.homes:
             self.setup_subscriptions()
@@ -320,7 +324,7 @@ class TibberCollector(object):
 
         for key, val in metrics.items():
             yield val
-        logging.info('Collect DONE')
+        logging.debug('Collect DONE')
 
 
     def get_homes(self):
@@ -354,7 +358,7 @@ async def subscriptions():
                 tasks.append(rt.subscribe_live_measurements())
             else:
                 tasks.append(rt.subscription_task)
-                
+
         if not tasks:
             time.sleep(1)
             continue
